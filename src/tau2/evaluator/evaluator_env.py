@@ -114,6 +114,8 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
                     f"Error in golden actions {action.name}({action.arguments}): {e}"
                 )
 
+        gold_environment.sync_tools()
+
         # Comparing the environments
         agent_db_hash = gold_environment.get_db_hash()
         user_db_hash = gold_environment.get_user_db_hash()
@@ -320,6 +322,8 @@ class FullDuplexEnvironmentEvaluator(EvaluatorBase[Tick]):
                 logger.warning(
                     f"Error in golden actions {action.name}({action.arguments}): {e}"
                 )
+
+        gold_environment.sync_tools()
 
         # Comparing the environments
         agent_db_hash = gold_environment.get_db_hash()

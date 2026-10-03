@@ -4,14 +4,17 @@ Output:
 Counter({"{'note': 'No nl_assertions to evaluate'}": 9868, 'None': 964})
 ```
 """
-from pathlib import Path
+
 import json
 from collections import Counter
+from pathlib import Path
+
 from tqdm.auto import tqdm
 
-
 all_nl = Counter()
-for result_file in tqdm(Path("data/tau2/results/final").glob("*.json"), desc="Reading paths"):
+for result_file in tqdm(
+    Path("data/tau2/results/final").glob("*.json"), desc="Reading paths"
+):
     data = json.loads(result_file.read_text())
     for simulation in data["simulations"]:
         nl = simulation["reward_info"]["info"].get("nl")

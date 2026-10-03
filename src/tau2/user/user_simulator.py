@@ -262,7 +262,9 @@ class UserSimulator(
             )
             if assistant_message.tool_calls is not None:
                 user_message.tool_calls = [
-                    ToolCall(id=tc.id, name=tc.name, arguments=tc.arguments, requestor="user")
+                    ToolCall(
+                        id=tc.id, name=tc.name, arguments=tc.arguments, requestor="user"
+                    )
                     for tc in assistant_message.tool_calls
                 ]
             if user_message.has_content() or user_message.is_tool_call():
@@ -272,7 +274,9 @@ class UserSimulator(
             state.empty_user_response_attempts += 1
             # print (not loguru): the Gym agent calls logger.remove(), so loguru
             # warnings are suppressed. print goes to stdout and is always captured.
-            full_response = json.dumps(assistant_message.model_dump(mode="json"), default=str)
+            full_response = json.dumps(
+                assistant_message.model_dump(mode="json"), default=str
+            )
             print(
                 f"EMPTY_USER_MESSAGE event=retry attempt={attempt}/{max_attempts} "
                 f"full_response={full_response}",

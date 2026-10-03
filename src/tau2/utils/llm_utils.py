@@ -12,10 +12,11 @@ from typing import Any, Optional
 
 import httpx
 import litellm
-from litellm import completion, completion_cost
+from litellm import completion_cost
 from litellm.caching.caching import Cache
 from litellm.main import ModelResponse, Usage
 from loguru import logger
+from nemo_gym.openai_utils import NeMoGymAsyncOpenAI
 
 from tau2.config import (
     DEFAULT_LLM_CACHE_TYPE,
@@ -39,8 +40,6 @@ from tau2.data_model.message import (
     UserMessage,
 )
 from tau2.environment.tool import Tool
-
-from nemo_gym.openai_utils import NeMoGymAsyncOpenAI
 
 # Suppress Pydantic serialization warnings from LiteLLM
 # These occur due to type mismatches between streaming and non-streaming response types
@@ -430,7 +429,7 @@ async def generate(
     reasoning_content: Optional[str] = None
     if content is not None and "</think>" in content:
         new_content = content.rsplit("</think>", maxsplit=1)[1]
-        reasoning_content = content[:-len(new_content)]
+        reasoning_content = content[: -len(new_content)]
         response["choices"][0]["message"]["content"] = new_content.strip()
         response["choices"][0]["message"]["reasoning_content"] = reasoning_content
 
