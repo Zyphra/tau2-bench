@@ -240,4 +240,6 @@ class FullDuplexNLAssertionsEvaluator(EvaluatorBase[Tick]):
 
         Delegates to NLAssertionsEvaluator.evaluate_nl_assertions.
         """
-        return await NLAssertionsEvaluator.evaluate_nl_assertions(trajectory, nl_assertions)
+        return await NLAssertionsEvaluator.evaluate_nl_assertions(
+            trajectory, nl_assertions
+        )
