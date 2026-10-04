@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import os
 import sys
 from copy import deepcopy
@@ -6,6 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
+from nemo_gym.server_utils import (
+    close_global_aiohttp_client,
+    is_global_aiohttp_client_setup,
+)
 from rich.console import Console
 from rich.progress import Progress
 
@@ -94,8 +99,53 @@ def compute_simulation_rewards(
     console: Optional[Console] = None,
     fresh_tasks: bool = False,
 ) -> Results:
+    """Compute rewards synchronously, returning a new Results object.
+
+    This helper owns its event loop and any NeMo HTTP client created during
+    evaluation. Call compute_simulation_rewards_async when an event loop or
+    a shared NeMo HTTP client already exists; its lifecycle remains caller-owned.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError(
+            "compute_simulation_rewards cannot run in an active event loop; "
+            "await compute_simulation_rewards_async instead"
+        )
+    if is_global_aiohttp_client_setup():
+        raise RuntimeError(
+            "compute_simulation_rewards cannot own an existing NeMo HTTP client; "
+            "await compute_simulation_rewards_async on the client's owning loop"
+        )
+
+    async def run_with_owned_client() -> Results:
+        try:
+            return await compute_simulation_rewards_async(
+                results=results,
+                evaluation_type=evaluation_type,
+                console=console,
+                fresh_tasks=fresh_tasks,
+            )
+        finally:
+            if is_global_aiohttp_client_setup():
+                # The public close API checks loop ownership before closing.
+                await close_global_aiohttp_client()
+
+    return asyncio.run(run_with_owned_client())
+
+
+async def compute_simulation_rewards_async(
+    results: Results,
+    evaluation_type: EvaluationType = EvaluationType.ALL,
+    console: Optional[Console] = None,
+    fresh_tasks: bool = False,
+) -> Results:
     """
     Compute and update rewards for all simulations in the results.
+
+    The caller owns the event loop and any NeMo HTTP client lifecycle.
 
     Args:
         results: The Results object containing simulations to evaluate
@@ -122,7 +172,7 @@ def compute_simulation_rewards(
 
         for simulation in results.simulations:
             task = tasks[simulation.task_id]
-            computed_reward_info = evaluate_simulation(
+            computed_reward_info = await evaluate_simulation(
                 domain=domain,
                 task=task,
                 simulation=simulation,
