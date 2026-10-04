@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from tau2.environment.db import DB
 from tau2.environment.tool import Tool, as_tool
-from tau2.utils import get_dict_hash, update_pydantic_model_with_dict
+from tau2.utils import update_pydantic_model_with_dict
 
 TOOL_ATTR = "__tool__"
 TOOL_TYPE_ATTR = "__tool_type__"
@@ -241,7 +241,7 @@ class ToolKitBase(metaclass=ToolKitType):
 
     def get_db_hash(self) -> str:
         """Get the hash of the database."""
-        return get_dict_hash(self.db.model_dump())
+        return self.db.get_hash()
 
 
 class ToolSignature(BaseModel):
