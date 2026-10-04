@@ -1,9 +1,11 @@
+import json
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
 from tau2.domains.airline.utils import AIRLINE_DB_PATH
 from tau2.environment.db import DB
+from tau2.utils import get_dict_hash
 
 FlightType = Literal["round_trip", "one_way"]
 CabinClass = Literal["business", "economy", "basic_economy"]
@@ -258,6 +260,21 @@ class FlightDB(DB):
     reservations: Dict[str, Reservation] = Field(
         description="Dictionary of all reservations indexed by reservation ID"
     )
+
+    def get_hash(self) -> str:
+        """Hash state with unordered reservation passengers, retaining duplicates.
+
+        Passenger position is incidental to a reservation's state. Canonicalize
+        complete passenger records only in the comparison copy; flight order,
+        payment history, and the stored database retain their original order.
+        """
+        state = self.model_dump()
+        for reservation in state["reservations"].values():
+            reservation["passengers"] = sorted(
+                reservation["passengers"],
+                key=lambda passenger: json.dumps(passenger, sort_keys=True),
+            )
+        return get_dict_hash(state)
 
     def get_statistics(self) -> dict[str, Any]:
         """Get the statistics of the database."""
