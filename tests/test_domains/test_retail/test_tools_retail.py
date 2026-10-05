@@ -128,6 +128,154 @@ def test_calculate(environment: Environment, calculate_call: ToolCall):
 
 
 @pytest.fixture
+def multiple_product_db(retail_db: RetailDB) -> RetailDB:
+    """A pending order whose replacement variants have distinct prices/options."""
+    order = retail_db.orders["#W0000000"]
+    order.items[0].price = 20.0
+    order.payment_history[0].amount = 120.0
+    shirt = retail_db.products["6086499569"]
+    shirt.variants["1008292230"].price = 20.0
+    shirt.variants["1008292231"].price = 30.0
+    keyboard = Product(
+        product_id="2000000000",
+        name="Keyboard",
+        variants={
+            "2000000001": Variant(
+                item_id="2000000001",
+                price=100.0,
+                available=True,
+                options={"layout": "US", "switch": "linear"},
+            ),
+            "2000000002": Variant(
+                item_id="2000000002",
+                price=150.0,
+                available=True,
+                options={"layout": "ISO", "switch": "tactile"},
+            ),
+        },
+    )
+    retail_db.products[keyboard.product_id] = keyboard
+    order.items.append(
+        OrderItem(
+            name=keyboard.name,
+            product_id=keyboard.product_id,
+            **keyboard.variants["2000000001"].model_dump(exclude={"available"}),
+        )
+    )
+    return retail_db
+
+
+def modify_multiple_items(
+    environment: Environment, payment_method_id: str, reverse: bool = False
+):
+    pairs = [("1008292230", "1008292231"), ("2000000001", "2000000002")]
+    if reverse:
+        pairs.reverse()
+    return environment.get_response(
+        ToolCall(
+            id="multi-item-modification",
+            name="modify_pending_order_items",
+            arguments={
+                "order_id": "#W0000000",
+                "item_ids": [old for old, _ in pairs],
+                "new_item_ids": [new for _, new in pairs],
+                "payment_method_id": payment_method_id,
+            },
+        )
+    )
+
+
+def set_replacement_refund_prices(db: RetailDB):
+    db.products["6086499569"].variants["1008292231"].price = 10.0
+    db.products["2000000000"].variants["2000000002"].price = 70.0
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("refund", [False, True])
+@pytest.mark.parametrize("payment_source", ["credit_card", "gift_card"])
+def test_modify_multiple_products_preserves_variant_identity_and_payment(
+    multiple_product_db: RetailDB, reverse: bool, refund: bool, payment_source: str
+):
+    if refund:
+        set_replacement_refund_prices(multiple_product_db)
+    before = multiple_product_db.model_dump()
+    environment = get_environment(multiple_product_db)
+    payment_id = f"{payment_source}_0000000"
+    response = modify_multiple_items(environment, payment_id, reverse)
+    assert not response.content.startswith("Error:")
+
+    order = environment.tools.db.orders["#W0000000"]
+    assert order.status == "pending (item modified)"
+    assert [item.item_id for item in order.items] == ["1008292231", "2000000002"]
+    for item in order.items:
+        variant = multiple_product_db.products[item.product_id].variants[item.item_id]
+        assert item.price == variant.price
+        assert item.options == variant.options
+    assert multiple_product_db.model_dump()["products"] == before["products"]
+    assert order.payment_history[:-1] == [
+        OrderPayment.model_validate(payment)
+        for payment in before["orders"]["#W0000000"]["payment_history"]
+    ]
+    difference = -40.0 if refund else 60.0
+    assert order.payment_history[-1] == OrderPayment(
+        transaction_type="refund" if refund else "payment",
+        amount=abs(difference),
+        payment_method_id=payment_id,
+    )
+    gift_card = multiple_product_db.users["sara_doe_496"].payment_methods[
+        "gift_card_0000000"
+    ]
+    assert gift_card.balance == (
+        100.0 - difference if payment_source == "gift_card" else 100.0
+    )
+
+
+@pytest.mark.parametrize("refund", [False, True])
+@pytest.mark.parametrize("payment_source", ["credit_card", "gift_card"])
+def test_modify_multiple_products_pair_order_preserves_entire_state(
+    multiple_product_db: RetailDB, refund: bool, payment_source: str
+):
+    if refund:
+        set_replacement_refund_prices(multiple_product_db)
+    forward = get_environment(multiple_product_db.model_copy(deep=True))
+    reverse = get_environment(multiple_product_db.model_copy(deep=True))
+    payment_id = f"{payment_source}_0000000"
+    assert not modify_multiple_items(forward, payment_id).content.startswith("Error:")
+    assert not modify_multiple_items(reverse, payment_id, True).content.startswith(
+        "Error:"
+    )
+    assert forward.tools.db.model_dump() == reverse.tools.db.model_dump()
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_modify_multiple_products_insufficient_funds_is_atomic(
+    multiple_product_db: RetailDB, reverse: bool
+):
+    multiple_product_db.users["sara_doe_496"].payment_methods[
+        "gift_card_0000000"
+    ].balance = 10.0
+    before = multiple_product_db.model_dump()
+    environment = get_environment(multiple_product_db)
+    response = modify_multiple_items(environment, "gift_card_0000000", reverse)
+    assert response.content == (
+        "Error: Insufficient gift card balance to pay for the new item"
+    )
+    assert environment.tools.db.model_dump() == before
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_modify_multiple_products_unavailable_variant_is_atomic(
+    multiple_product_db: RetailDB, reverse: bool
+):
+    multiple_product_db.products["2000000000"].variants["2000000002"].available = False
+    before = multiple_product_db.model_dump()
+    environment = get_environment(multiple_product_db)
+    response = modify_multiple_items(environment, "credit_card_0000000", reverse)
+    assert response.content == "Error: New item 2000000002 not found or available"
+    assert environment.tools.db.model_dump() == before
+
+
+@pytest.fixture
 def cancel_pending_order_call() -> ToolCall:
     return ToolCall(
         id="1",
