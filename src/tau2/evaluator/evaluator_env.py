@@ -30,6 +30,7 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
         solo_mode: bool = False,
         env_kwargs: dict = None,
         strict_replay: bool = True,
+        sync_gold_actions: bool = False,
     ) -> RewardInfo:
         """
         Calculate the reward for the simulation.
@@ -41,6 +42,9 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
             strict_replay: forwarded to Environment.set_state(strict=...). Set
                 False when re-grading historical trajectories whose recorded
                 tool outputs may cosmetically differ from current tool code.
+            sync_gold_actions: synchronize after each successful reference call,
+                matching live get_response transitions across user/agent tools.
+                False preserves historical reference replay.
         Returns:
             RewardInfo
         """
@@ -109,6 +113,8 @@ class EnvironmentEvaluator(EvaluatorBase[Message]):
                     requestor=action.requestor,
                     **action.arguments,
                 )
+                if sync_gold_actions:
+                    gold_environment.sync_tools()
             except Exception as e:
                 logger.warning(
                     f"Error in golden actions {action.name}({action.arguments}): {e}"
@@ -236,6 +242,7 @@ class FullDuplexEnvironmentEvaluator(EvaluatorBase[Tick]):
         solo_mode: bool = False,
         env_kwargs: dict = None,
         strict_replay: bool = True,
+        sync_gold_actions: bool = False,
     ) -> RewardInfo:
         """
         Calculate the reward for the simulation.
@@ -248,6 +255,9 @@ class FullDuplexEnvironmentEvaluator(EvaluatorBase[Tick]):
             strict_replay: forwarded to Environment.set_state(strict=...). Set
                 False when re-grading historical trajectories whose recorded
                 tool outputs may cosmetically differ from current tool code.
+            sync_gold_actions: synchronize after each successful reference call,
+                matching live get_response transitions across user/agent tools.
+                False preserves historical reference replay.
         Returns:
             RewardInfo
         """
@@ -318,6 +328,8 @@ class FullDuplexEnvironmentEvaluator(EvaluatorBase[Tick]):
                     requestor=action.requestor,
                     **action.arguments,
                 )
+                if sync_gold_actions:
+                    gold_environment.sync_tools()
             except Exception as e:
                 logger.warning(
                     f"Error in golden actions {action.name}({action.arguments}): {e}"
